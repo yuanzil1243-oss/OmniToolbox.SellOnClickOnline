@@ -16,8 +16,9 @@ using OmniToolbox.Host;
 
 namespace OmniToolbox.SellOnClickOnline;
 
-public sealed unsafe class SellOnClick(SellOnClickConfig config) : ModuleBase
+public sealed unsafe class SellOnClick : ModuleBase
 {
+    private readonly SellOnClickConfig config = new();
     public override ModuleInfo Info { get; } = new()
     {
         Title = "按键出售", Author = "Yuzi", Category = ModuleCategory.Item,
