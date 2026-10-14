@@ -17,7 +17,7 @@ public sealed class SellOnClick : ModuleBase
         Title = "按键出售",
         Description = "在出售界面按住修饰键点击物品进入出售模式。",
         Category = ModuleCategory.Item,
-        Author = "yuanzil1243-oss",
+        Author = "Yuzi",
         Commands = [new("按键出售开关", "/omni SellOnClick")]
     };
 
