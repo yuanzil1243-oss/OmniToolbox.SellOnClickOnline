@@ -1,4 +1,14 @@
+using System;
 using Dalamud.Bindings.ImGui;
+using Dalamud.Game.ClientState.Keys;
+using Dalamud.Hooking;
+using FFXIVClientStructs.FFXIV.Client.Game;
+using FFXIVClientStructs.FFXIV.Client.UI;
+using FFXIVClientStructs.FFXIV.Client.UI.Agent;
+using FFXIVClientStructs.FFXIV.Component.GUI;
+using Lumina.Excel.Sheets;
+using OmenTools;
+using OmenTools.OmenService;
 using OmniToolbox.Common.Module.Abstractions;
 using OmniToolbox.Common.Module.Enums;
 using OmniToolbox.Common.Module.Models;
@@ -6,61 +16,97 @@ using OmniToolbox.Host;
 
 namespace OmniToolbox.SellOnClickOnline;
 
-/// <summary>
-/// Modifier-key sell mode host for the online module repository.
-/// The game-specific sell dispatch is intentionally isolated until the current ShopSell/RetainerSell ABI is verified.
-/// </summary>
-public sealed class SellOnClick : ModuleBase
+public sealed unsafe class SellOnClick(SellOnClickConfig config) : ModuleBase
 {
     public override ModuleInfo Info { get; } = new()
     {
-        Title = "按键出售",
-        Description = "在出售界面按住修饰键点击物品进入出售模式。",
-        Category = ModuleCategory.Item,
-        Author = "Yuzi",
-        Commands = [new("按键出售开关", "/omni SellOnClick")]
+        Title = "按键出售", Author = "Yuzi", Category = ModuleCategory.Item,
+        Description = "按住配置的修饰键右键单击物品，执行当前商店或雇员菜单的系统出售动作。保留原生确认。"
     };
-
-    private SellOnClickConfig config = new();
-
     public override bool HasSettings => true;
+    private Hook<AgentInventoryContext.Delegates.OpenForItemSlot>? hook;
+    private string vendorLabel = "";
+    private string retainerLabel = "";
+    private bool dispatching;
 
-    protected override void OnEnable() => DalamudServices.PluginInterface.UiBuilder.Draw += DrawOverlay;
-
-    protected override void OnDisable() => DalamudServices.PluginInterface.UiBuilder.Draw -= DrawOverlay;
+    protected override void OnEnable()
+    {
+        var sheet = DalamudServices.DataManager.GetExcelSheet<Addon>();
+        vendorLabel = sheet.GetRow(93).Text.ExtractText();
+        retainerLabel = sheet.GetRow(5480).Text.ExtractText();
+        try
+        {
+            hook = DService.Instance().Hook.HookFromAddress<AgentInventoryContext.Delegates.OpenForItemSlot>(
+                AgentInventoryContext.MemberFunctionPointers.OpenForItemSlot, OpenContext);
+            hook.Enable();
+        }
+        catch { hook?.Dispose(); hook = null; throw; }
+    }
+    protected override void OnDisable() { hook?.Dispose(); hook = null; }
 
     public override bool DrawSettings()
     {
-        var changed = false;
-        var enabled = config.Enabled;
-        if (ImGui.Checkbox("启用按键出售模式", ref enabled))
-        {
-            config.Enabled = enabled;
-            changed = true;
-        }
-
-        ImGui.TextUnformatted("支持 Alt、Ctrl、Shift 及其组合键。仅在出售界面显示状态。");
+        var changed = ImGui.Checkbox("Alt", ref config.Alt);
+        changed |= ImGui.Checkbox("Ctrl", ref config.Ctrl);
+        changed |= ImGui.Checkbox("Shift", ref config.Shift);
+        ImGui.TextUnformatted("按住全部选中的修饰键＋鼠标右键单击物品。\n仅执行游戏菜单中可用的系统出售，保留数量／贵重物品确认。");
+        if (!config.Alt && !config.Ctrl && !config.Shift)
+            ImGui.TextUnformatted("请至少选择一个修饰键；当前不会触发出售。");
         return changed;
     }
+    private bool Held() => (config.Alt || config.Ctrl || config.Shift)
+        && (!config.Alt || DalamudServices.KeyState[VirtualKey.MENU])
+        && (!config.Ctrl || DalamudServices.KeyState[VirtualKey.CONTROL])
+        && (!config.Shift || DalamudServices.KeyState[VirtualKey.SHIFT]);
 
-    private void DrawOverlay()
+    private static bool Visible(string name)
     {
-        if (!IsEnabled || !config.Enabled)
-            return;
+        var addon = RaptureAtkUnitManager.Instance()->GetAddonByName(name);
+        return addon != null && addon->IsVisible;
+    }
 
-        var io = ImGui.GetIO();
-        var modifierHeld = io.KeyAlt || io.KeyCtrl || io.KeyShift;
-        if (!modifierHeld)
-            return;
-
-        ImGui.SetNextWindowBgAlpha(0.85f);
-        ImGui.Begin("按键出售##SellOnClickStatus", ImGuiWindowFlags.AlwaysAutoResize | ImGuiWindowFlags.NoDecoration);
-        ImGui.TextUnformatted("出售模式：已按住修饰键");
-        ImGui.End();
+    private void OpenContext(AgentInventoryContext* context, InventoryType inventory, int slot, int flags, uint owner)
+    {
+        hook!.Original(context, inventory, slot, flags, owner);
+        if (dispatching || !Held() || context == null) return;
+        try
+        {
+            // The native context menu is the authority: no cached item ID or guessed slot is sold.
+            var vendor = Visible("Shop");
+            var retainer = Visible("RetainerGrid0") || Visible("RetainerSellList");
+            if (!vendor && !retainer) return;
+            var container = InventoryManager.Instance()->GetInventoryContainer(inventory);
+            var item = container == null ? null : container->GetInventorySlot(slot);
+            if (item == null || item->ItemId == 0 || item->Quantity == 0) return;
+            var menu = RaptureAtkUnitManager.Instance()->GetAddonById((ushort)context->GetAddonId());
+            if (menu == null || !menu->IsVisible) return;
+            var label = vendor ? vendorLabel : retainerLabel;
+            if (string.IsNullOrEmpty(label)) return;
+            for (var i = 0; i < context->ContextItemCount && i < 32; i++)
+            {
+                var index = context->ContexItemStartIndex + i;
+                if (index < 0 || index >= context->EventParams.Length || context->IsContextItemDisabled(i)) continue;
+                ref var value = ref context->EventParams[index];
+                if (value.Type != AtkValueType.String || value.String.ToString() != label) continue;
+                AtkValue* args = stackalloc AtkValue[5];
+                args[0].SetInt(0); args[1].SetInt(i); args[2].SetUInt(0); args[3].SetInt(0); args[4].SetInt(0);
+                dispatching = true;
+                menu->FireCallback(5, args);
+                context->Hide();
+                menu->Close(false);
+                break;
+            }
+        }
+        catch (Exception ex) { DalamudServices.PluginLog.Error(ex, "按键出售未完成"); }
+        finally { dispatching = false; }
     }
 }
 
+[Serializable]
 public sealed class SellOnClickConfig
 {
-    public bool Enabled { get; set; } = true;
+    public bool Alt;
+    public bool Ctrl;
+    public bool Shift = true;
 }
+

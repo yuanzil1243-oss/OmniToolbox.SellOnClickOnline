@@ -1,20 +1,12 @@
-# OmniToolbox 在线模块：按键出售
+# 按键出售（Yuzi）
 
-本目录用于发布 `SellOnClick` 在线模块，作者为 Yuzi。模块设计为：按住配置的修饰键，在商店 NPC 或雇员出售界面中左键点击物品，提交一次出售请求。
+Omni Toolbox 在线模块。默认按住 **Shift＋鼠标右键单击**背包物品，自动选择游戏原生菜单的“出售”或“让雇员出售”。设置支持 Alt、Ctrl、Shift 的非空组合，需同时按住所选键。
 
-## 当前依赖
+仅在 NPC 商店或雇员物品／市场列表界面、且原生菜单确实提供可用的系统出售动作时触发。不选择市场上架，不绕过游戏数量或贵重物品确认。不使用角色缓存猜测槽位，直接验证本次点击的实时槽位；不修改 Omni 本体。
 
-模块必须使用与 Omni Toolbox 相同的 Dalamud API、FFXIVClientStructs 和 `OmniToolbox.Common` 版本编译。Omni 的在线模块协议只负责下载和加载代码，不会为在线模块提供出售 API；出售动作需要直接调用当前游戏版本的 `ShopSell` / `RetainerSell` Agent，因此必须在目标版本 SDK 可用后实现和验证。
+在线模块库：
+https://raw.githubusercontent.com/yuanzil1243-oss/OmniToolbox.SellOnClickOnline/master/TreeHouseModules.json
 
-## 行为约束
+在 Omni 在线模块中刷新该仓库并更新“按键出售”。作者：Yuzi。版本 0.2.0 已通过本机 Omni 1.1.6.6 / Dalamud API 15 程序集编译；实际出售仍需游戏内验证。
 
-- 只处理 `ShopSell`、`RetainerSell` 等已确认的出售界面。
-- 不在普通背包、仓库、装备栏或买入界面响应。
-- 修饰键支持 Alt、Ctrl、Shift 以及三者的非空组合。
-- 每次鼠标点击最多提交一次出售请求。
-- 发送请求前重新读取槽位并检查物品存在、数量和当前出售界面，避免陈旧槽位操作。
-- 模块停用时注销输入和 Addon 事件。
-
-## 发布
-
-完成目标 Dalamud SDK 下的编译和游戏内验证后，将最终 `.cs` 或 `.dll` 的 SHA256 写入根目录 `TreeHouseModules.json`，再提交到公开仓库。
+技术参考：SimpleTweaksPlugin 的 QuickSellItems 展示了原生物品上下文菜单出售入口。本项目保留原生确认流程。
