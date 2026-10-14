@@ -6,10 +6,10 @@
       "Name": "按键出售",
       "Author": "Yuzi",
       "Description": "按住修饰键右键单击物品，调用商店或雇员的原生系统出售动作。",
-      "Version": "0.2.0",
+      "Version": "0.2.1",
       "MinimumOmniVersion": "1.1.6.6",
       "File": "SellOnClick.cs",
-      "Sha256": "6E0C1237C22A011AF9713A8BCB92FCAD8B4DF714D9FB7109CAD87A81A8F4DDD0"
+      "Sha256": "460AF4508A762DEF6BF689104A0EEE80BDD3F8B895C0526CAF196B57BDBCDE1D"
     }
   ]
 }
