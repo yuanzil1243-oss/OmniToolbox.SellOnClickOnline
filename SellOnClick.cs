@@ -1,6 +1,8 @@
 using System;
 using Dalamud.Bindings.ImGui;
 using Dalamud.Game.ClientState.Keys;
+using Dalamud.Game.Addon.Lifecycle;
+using Dalamud.Game.Addon.Lifecycle.AddonArgTypes;
 using Dalamud.Hooking;
 using FFXIVClientStructs.FFXIV.Client.Game;
 using FFXIVClientStructs.FFXIV.Client.UI;
@@ -9,10 +11,12 @@ using FFXIVClientStructs.FFXIV.Component.GUI;
 using Lumina.Excel.Sheets;
 using OmenTools;
 using OmenTools.OmenService;
+using OmenTools.Interop.Game.AddonEvent;
 using OmniToolbox.Common.Module.Abstractions;
 using OmniToolbox.Common.Module.Enums;
 using OmniToolbox.Common.Module.Models;
 using OmniToolbox.Host;
+using OmniToolbox.Lifecycle;
 
 namespace OmniToolbox.SellOnClickOnline;
 
@@ -22,13 +26,15 @@ public sealed unsafe class SellOnClick : ModuleBase
     public override ModuleInfo Info { get; } = new()
     {
         Title = "按键出售", Author = "Yuzi", Category = ModuleCategory.Item,
-        Description = "按住配置的修饰键右键单击物品，执行当前商店或雇员菜单的系统出售动作。保留原生确认。"
+        Description = "按住配置的修饰键右键单击物品，执行当前商店或雇员菜单的系统出售动作。"
     };
     public override bool HasSettings => true;
     private Hook<AgentInventoryContext.Delegates.OpenForItemSlot>? hook;
     private string vendorLabel = "";
     private string retainerLabel = "";
     private bool dispatching;
+    private AddonEventRegistry? addonEvents;
+    private bool pendingSellConfirmation;
 
     protected override void OnEnable()
     {
@@ -40,17 +46,27 @@ public sealed unsafe class SellOnClick : ModuleBase
             hook = DService.Instance().Hook.HookFromAddress<AgentInventoryContext.Delegates.OpenForItemSlot>(
                 AgentInventoryContext.MemberFunctionPointers.OpenForItemSlot, OpenContext);
             hook.Enable();
+            addonEvents = new AddonEventRegistry(DalamudServices.AddonLifecycle);
+            addonEvents.Register(AddonEvent.PostSetup, "SelectYesno", OnSelectYesno);
         }
         catch { hook?.Dispose(); hook = null; throw; }
     }
-    protected override void OnDisable() { hook?.Dispose(); hook = null; }
+    protected override void OnDisable()
+    {
+        addonEvents?.Dispose();
+        addonEvents = null;
+        pendingSellConfirmation = false;
+        hook?.Dispose();
+        hook = null;
+    }
 
     public override bool DrawSettings()
     {
         var changed = ImGui.Checkbox("Alt", ref config.Alt);
         changed |= ImGui.Checkbox("Ctrl", ref config.Ctrl);
         changed |= ImGui.Checkbox("Shift", ref config.Shift);
-        ImGui.TextUnformatted("按住全部选中的修饰键＋鼠标右键单击物品。\n仅执行游戏菜单中可用的系统出售，保留数量／贵重物品确认。");
+        changed |= ImGui.Checkbox("自动确认贵重物品", ref config.AutoConfirmValuable);
+        ImGui.TextUnformatted("按住全部选中的修饰键＋鼠标右键单击物品。\n仅执行游戏菜单中可用的系统出售。");
         if (!config.Alt && !config.Ctrl && !config.Shift)
             ImGui.TextUnformatted("请至少选择一个修饰键；当前不会触发出售。");
         return changed;
@@ -93,6 +109,7 @@ public sealed unsafe class SellOnClick : ModuleBase
                 args[0].SetInt(0); args[1].SetInt(i); args[2].SetUInt(0); args[3].SetInt(0); args[4].SetInt(0);
                 dispatching = true;
                 menu->FireCallback(5, args);
+                pendingSellConfirmation = config.AutoConfirmValuable;
                 context->Hide();
                 menu->Close(false);
                 break;
@@ -100,6 +117,15 @@ public sealed unsafe class SellOnClick : ModuleBase
         }
         catch (Exception ex) { DalamudServices.PluginLog.Error(ex, "按键出售未完成"); }
         finally { dispatching = false; }
+    }
+
+    private void OnSelectYesno(AddonEvent type, AddonArgs args)
+    {
+        if (!pendingSellConfirmation)
+            return;
+
+        pendingSellConfirmation = false;
+        DalamudServices.Framework.RunOnFrameworkThread(() => AddonSelectYesnoEvent.ClickYes());
     }
 }
 
@@ -109,5 +135,6 @@ public sealed class SellOnClickConfig
     public bool Alt;
     public bool Ctrl;
     public bool Shift = true;
+    public bool AutoConfirmValuable;
 }
 
