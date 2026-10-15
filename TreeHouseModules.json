@@ -3,13 +3,13 @@
   "Modules": [
     {
       "InternalName": "SellOnClick",
-      "Name": "按键出售",
+      "Name": "快捷出售",
       "Author": "Yuzi",
       "Description": "按住修饰键右键单击物品，调用商店或雇员的原生系统出售动作。",
-      "Version": "0.2.3",
+      "Version": "0.2.4",
       "MinimumOmniVersion": "1.1.6.6",
       "File": "SellOnClick.cs",
-      "Sha256": "EC5BD7A0F067D5C0428CB2E372BE6630A1FAB38D330F9426E48725B0856BC4A9"
+      "Sha256": "D2F6E413D34112FC1BDC83E03F603DA3916C38DC16285824AACE7E2238B3A7CD"
     }
   ]
 }

@@ -25,7 +25,7 @@ public sealed unsafe class SellOnClick : ModuleBase
     private readonly SellOnClickConfig config = new();
     public override ModuleInfo Info { get; } = new()
     {
-        Title = "按键出售", Author = "Yuzi", Category = ModuleCategory.Item,
+        Title = "快捷出售", Author = "Yuzi", Category = ModuleCategory.Item,
         Description = "按住配置的修饰键右键单击物品，执行当前商店或雇员菜单的系统出售动作。"
     };
     public override bool HasSettings => true;
